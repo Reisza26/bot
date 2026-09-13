@@ -30,14 +30,12 @@ WEEKLY_RESET_HOUR = 0
 WEEKLY_RESET_MINUTE = 0
 last_weekly_reset_date = None
 
-# Render free'de disk yoksa xp.db her restart'ta silinir!
-# Çözüm: Render'da Disk ekle (paid) veya DB_PATH'i /data/xp.db yap ve Volume ekle
-if os.getenv("RENDER") and not os.path.exists(DB_PATH) and DB_PATH == "xp.db":
-    # Render'da dosya yoksa logla
-    logger.warning(f"DB_PATH {DB_PATH} bulunamadı, yeni oluşturulacak - free planda her restart'ta silinir! Disk ekle." )
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Render free uyarısı (logger'dan sonra)
+if os.getenv("RENDER") and not os.path.exists(DB_PATH) and DB_PATH == "xp.db":
+    logger.warning(f"DB_PATH {DB_PATH} bulunamadı, yeni oluşturulacak - free planda her restart'ta silinir! Disk ekle.")
 
 # --- Spam / Flood Takibi (memory'de tutulur) ---
 user_message_times = defaultdict(lambda: deque())
