@@ -12,6 +12,8 @@ services:
         value: 10000
       - key: DB_PATH
         value: xp.db # Starter + disk kullaniyorsan /data/xp.db yap
+      - key: PYTHON_VERSION
+        value: 3.11.9
     healthCheckPath: /
     # Kalici XP icin (free'de XP her restart'ta silinir!):
     # Starter plana gecince alt satirlari ac:
@@ -30,4 +32,6 @@ services:
         sync: false
       - key: PORT
         value: 10000
+      - key: PYTHON_VERSION
+        value: 3.11.9
     healthCheckPath: /
