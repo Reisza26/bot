@@ -45,7 +45,10 @@ FLOOD_LIMIT = 10
 FLOOD_MUTE_SECONDS = 60
 SPAM_INTERVAL = 1.0
 
-# --- Rank / Rol Sistemi ---
+# --- Rank / Rol Sistemi (SADECE BOT İÇİ, YÖNETİCİ YAPMAZ) ---
+# Telegram'da normal üyeye rol verilemiyor, sadece admin unvanı var.
+# O yüzden ranklar sadece bot içinde (.ben/.sıra) ve duyuru mesajı olarak verilir, yönetici yapılmaz.
+ENABLE_TELEGRAM_TITLE = False  # True yaparsan admin unvanı dener (yönetici yapar)
 XP_RANKS = [
     (2000, "GOAT Sohbetçi"),
     (1000, "Efsanevi Sohbetçi"),
@@ -289,17 +292,18 @@ async def perform_weekly_reset(app):
 
     logger.warning(f"HAFTALIK SIFIRLAMA YAPILDI {week_str} - Top: {top[0] if top else 'yok'}")
 
-    # Rank unvanlarını temizlemeyi dene (yeni hafta)
     chats = get_all_chats()
-    for _, _, xp, _, _, user_id in top:
-        rank_before, _ = get_rank_title(xp)
-        if rank_before:
-            for chat_id in chats:
-                try:
-                    await app.bot.set_chat_administrator_custom_title(chat_id, user_id, "")
-                    await asyncio.sleep(0.2)
-                except:
-                    pass
+    # Rank unvanı verilmişse temizle (sadece ENABLE_TELEGRAM_TITLE True ise)
+    if ENABLE_TELEGRAM_TITLE:
+        for _, _, xp, _, _, user_id in top:
+            rank_before, _ = get_rank_title(xp)
+            if rank_before:
+                for chat_id in chats:
+                    try:
+                        await app.bot.set_chat_administrator_custom_title(chat_id, user_id, "")
+                        await asyncio.sleep(0.2)
+                    except:
+                        pass
 
     # Tüm gruplara duyuru gönder
     for chat_id in chats:
@@ -603,32 +607,41 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"+{xp_gain} XP ({reason}) -> {first_name} (@{username}) [{user_id}] | Toplam: {new_xp} | Lv: {new_level}")
 
-    # --- Rank kontrolü ---
+    # --- Rank kontrolü (SADECE BOT İÇİ, YÖNETİCİ YAPMAZ) ---
     old_rank, _ = get_rank_title(old_xp)
     new_rank, new_threshold = get_rank_title(new_xp)
     if old_rank != new_rank and new_rank is not None:
-        # Rank atladı!
         try:
-            # Telegram'da özel unvan vermeyi dene (bot admin ve promote yetkisi varsa)
-            chat = update.effective_chat
-            gave_title = False
-            if chat and chat.type in ["group", "supergroup"]:
-                gave_title = await try_give_rank_title(context, chat.id, user_id, new_rank)
-            if gave_title:
-                await msg.reply_text(
-                    f"🏆 **RANK ATLADIN!** 🏆\n\n"
-                    f"🎉 Tebrikler {first_name}!\n"
-                    f"⭐ {new_xp} XP ile **{new_rank}** oldun!\n"
-                    f"👑 Telegram unvanın verildi: `{new_rank}`",
-                    parse_mode="Markdown"
-                )
+            if ENABLE_TELEGRAM_TITLE:
+                # İstenirse Telegram unvanı dener (yönetici yapar) - kapalı tutuyoruz
+                chat = update.effective_chat
+                gave_title = False
+                if chat and chat.type in ["group", "supergroup"]:
+                    gave_title = await try_give_rank_title(context, chat.id, user_id, new_rank)
+                if gave_title:
+                    await msg.reply_text(
+                        f"🏆 **RANK ATLADIN!** 🏆\n\n"
+                        f"🎉 Tebrikler {first_name}!\n"
+                        f"⭐ {new_xp} XP ile **{new_rank}** oldun!\n"
+                        f"👑 Telegram unvanın verildi: `{new_rank}`",
+                        parse_mode="Markdown"
+                    )
+                else:
+                    await msg.reply_text(
+                        f"🏆 **RANK ATLADIN!** 🏆\n\n"
+                        f"🎉 Tebrikler {first_name}!\n"
+                        f"⭐ {new_xp} XP ile **{new_rank}** oldun! 🔥\n"
+                        f"➡️ Sıradaki rank için `.ben` yaz!",
+                        parse_mode="Markdown"
+                    )
             else:
-                # Yetki yoksa sadece duyuru
+                # Normal: sadece bot içi rank, yönetici yapmadan duyuru
                 await msg.reply_text(
                     f"🏆 **RANK ATLADIN!** 🏆\n\n"
                     f"🎉 Tebrikler {first_name}!\n"
-                    f"⭐ {new_xp} XP ile **{new_rank}** oldun!\n"
-                    f"💡 (Botu yönetici yapıp 'Kullanıcıları terfi ettirme' yetkisi verirsen unvan otomatik takılır)",
+                    f"⭐ {new_xp} XP ile **{new_rank}** oldun! 🔥\n"
+                    f"👑 Bu rank sadece bot içinde görünür, yönetici yetkisi vermez.\n"
+                    f"➡️ `.ben` ile rank'ını gör!",
                     parse_mode="Markdown"
                 )
         except Exception as e:
