@@ -191,6 +191,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     start_keepalive()
+    # Python 3.14 uyumu: event loop yoksa oluştur
+    try:
+        import asyncio
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
     print("Welcome bot başlatılıyor...")
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 

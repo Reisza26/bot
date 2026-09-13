@@ -715,6 +715,12 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
 def main():
     init_db()
     start_keepalive()
+    # Python 3.14 event loop fix
+    try:
+        import asyncio
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
     print("Bot başlatılıyor...")
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
 
