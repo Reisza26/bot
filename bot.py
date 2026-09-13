@@ -395,23 +395,33 @@ async def rank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     rank_title, _ = get_rank_title(xp)
     next_rank, next_thresh, need_rank = get_next_rank_info(xp)
-    rank_str = f"👑 Rank: {rank_title}" if rank_title else "👑 Rank: Yok"
-    if next_rank:
-        rank_str += f"\n➡️ Sonraki rank: {next_rank} ({need_rank} XP kaldı)"
+    
+    # Rank en üstte
+    if rank_title:
+        rank_header = f"👑 **{rank_title}**"
     else:
-        if rank_title:
-            rank_str += "\n✨ En yüksek ranktasın! (GOAT)"
+        rank_header = f"👑 Rank Yok"
+
+    # 1. 2. 3. sıralı, sadece XP + rank, mesaj sayısı yok
+    lines = []
+    lines.append(f"1. ⭐ {xp} XP" + (f" · {rank_title}" if rank_title else ""))
+    lines.append(f"2. 🏆 Seviye {level}")
+    if next_rank:
+        lines.append(f"3. 🎯 Sonraki: {next_rank} ({need_rank} XP)")
+    else:
+        if rank_title == "GOAT Sohbetçi":
+            lines.append(f"3. ✨ En yüksek rank!")
+        else:
+            lines.append(f"3. 🎯 Sonraki seviye: {current_level_xp}/{need} XP")
 
     next_reset = get_next_reset_time()
+    # Kısa reset tarihi (sadece gün)
+    short_reset = next_reset.split(" ")[0] if next_reset else ""
     reply = (
-        f"📊 **Senin İstatistiklerin**\n\n"
-        f"👤 {first_name} (@{username or 'yok'})\n"
-        f"⭐ XP: {xp}\n"
-        f"🏆 Seviye: {level}\n"
-        f"{rank_str}\n"
-        f"💬 Mesaj: {msg_count}\n"
-        f"📈 Sonraki seviye: {current_level_xp}/{need} XP\n"
-        f"♻️ Haftalık sıfırlama: {next_reset}"
+        f"{rank_header}\n"
+        f"👤 {first_name} (@{username or 'yok'})\n\n"
+        + "\n".join(lines) +
+        f"\n\n♻️ {short_reset}"
     )
     target = msg if msg else update.effective_message
     if target:
@@ -438,16 +448,15 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     next_reset = get_next_reset_time()
-    text = "🏆 **XP Liderlik Tablosu - Top 10**\n"
-    text += f"♻️ Sıfırlama: {next_reset}\n"
-    text += f"👑 Ranklar: 500=Çılgın | 1000=Efsanevi | 2000=GOAT\n\n"
+    short_reset = next_reset.split(" ")[0] if next_reset else ""
+    text = f"🏆 **Top 10** · ♻️ {short_reset}\n"
+    text += f"👑 500 Çılgın · 1000 Efsanevi · 2000 GOAT\n\n"
     for i, (username, first_name, xp, level, msg_count) in enumerate(rows, 1):
-        medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
         name = f"@{username}" if username else first_name
         rank_title, _ = get_rank_title(xp)
-        rank_icon = "👑" if rank_title else ""
-        rank_str = f" | {rank_title}" if rank_title else ""
-        text += f"{medal} {name} — Lv.{level} | {xp} XP{rank_str} {rank_icon} ({msg_count} mesaj)\n"
+        rank_str = f"· {rank_title}" if rank_title else ""
+        # Düzenli: 1. @ali — 2100 XP · GOAT
+        text += f"{i}. {name} — {xp} XP {rank_str}\n"
 
     target = msg if msg else update.effective_message
     if target:
