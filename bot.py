@@ -45,6 +45,54 @@ FLOOD_LIMIT = 10
 FLOOD_MUTE_SECONDS = 60
 SPAM_INTERVAL = 1.0
 
+# --- Rank / Rol Sistemi ---
+XP_RANKS = [
+    (2000, "GOAT Sohbetçi"),
+    (1000, "Efsanevi Sohbetçi"),
+    (500, "Çılgın Sohbetçi"),
+]
+
+def get_rank_title(xp: int):
+    """XP'ye göre rank döndür, yoksa None"""
+    for threshold, title in XP_RANKS:
+        if xp >= threshold:
+            return title, threshold
+    return None, None
+
+def get_next_rank_info(xp: int):
+    """Sonraki rank için kaç XP kaldı"""
+    for threshold, title in sorted(XP_RANKS):
+        if xp < threshold:
+            return title, threshold, threshold - xp
+    return None, None, 0
+
+async def try_give_rank_title(context, chat_id, user_id, title):
+    """Telegram özel unvan vermeyi dener, başarılıysa True"""
+    try:
+        # Önce admin yapmayı dene (yetkileri kapalı, sadece unvan için)
+        try:
+            await context.bot.promote_chat_member(
+                chat_id=chat_id,
+                user_id=user_id,
+                can_manage_chat=False,
+                can_delete_messages=False,
+                can_manage_video_chats=False,
+                can_restrict_members=False,
+                can_promote_members=False,
+                can_change_info=False,
+                can_invite_users=False,
+                can_pin_messages=False,
+            )
+        except Exception as e:
+            # Zaten adminse hata verebilir, sorun değil
+            logger.debug(f"promote denemesi: {e}")
+        await context.bot.set_chat_administrator_custom_title(chat_id, user_id, title)
+        logger.info(f"Unvan verildi: {user_id} -> {title} in {chat_id}")
+        return True
+    except Exception as e:
+        logger.warning(f"Unvan verilemedi {user_id} -> {title} in {chat_id}: {e}")
+        return False
+
 # --- DB İşlemleri ---
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -141,7 +189,7 @@ def add_xp(user_id, username, first_name, xp_gain):
                   (user_id, username, first_name, xp, level, 1, now))
         conn.commit()
         conn.close()
-        return xp, level, level > 0, 0
+        return xp, level, level > 0, 0, 0
     else:
         old_xp, old_level, msg_count = row
         new_xp = old_xp + xp_gain
@@ -151,7 +199,7 @@ def add_xp(user_id, username, first_name, xp_gain):
         conn.commit()
         conn.close()
         leveled_up = new_level > old_level
-        return new_xp, new_level, leveled_up, old_level
+        return new_xp, new_level, leveled_up, old_level, old_xp
 
 def calculate_xp_by_words(text: str) -> tuple[int, int]:
     if not text or not text.strip():
@@ -241,8 +289,19 @@ async def perform_weekly_reset(app):
 
     logger.warning(f"HAFTALIK SIFIRLAMA YAPILDI {week_str} - Top: {top[0] if top else 'yok'}")
 
-    # Tüm gruplara duyuru gönder
+    # Rank unvanlarını temizlemeyi dene (yeni hafta)
     chats = get_all_chats()
+    for _, _, xp, _, _, user_id in top:
+        rank_before, _ = get_rank_title(xp)
+        if rank_before:
+            for chat_id in chats:
+                try:
+                    await app.bot.set_chat_administrator_custom_title(chat_id, user_id, "")
+                    await asyncio.sleep(0.2)
+                except:
+                    pass
+
+    # Tüm gruplara duyuru gönder
     for chat_id in chats:
         try:
             await app.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
@@ -330,12 +389,22 @@ async def rank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if current_level_xp < 0:
         current_level_xp = 0
     
+    rank_title, _ = get_rank_title(xp)
+    next_rank, next_thresh, need_rank = get_next_rank_info(xp)
+    rank_str = f"👑 Rank: {rank_title}" if rank_title else "👑 Rank: Yok"
+    if next_rank:
+        rank_str += f"\n➡️ Sonraki rank: {next_rank} ({need_rank} XP kaldı)"
+    else:
+        if rank_title:
+            rank_str += "\n✨ En yüksek ranktasın! (GOAT)"
+
     next_reset = get_next_reset_time()
     reply = (
         f"📊 **Senin İstatistiklerin**\n\n"
         f"👤 {first_name} (@{username or 'yok'})\n"
         f"⭐ XP: {xp}\n"
         f"🏆 Seviye: {level}\n"
+        f"{rank_str}\n"
         f"💬 Mesaj: {msg_count}\n"
         f"📈 Sonraki seviye: {current_level_xp}/{need} XP\n"
         f"♻️ Haftalık sıfırlama: {next_reset}"
@@ -366,11 +435,15 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     next_reset = get_next_reset_time()
     text = "🏆 **XP Liderlik Tablosu - Top 10**\n"
-    text += f"♻️ Sıfırlama: {next_reset}\n\n"
+    text += f"♻️ Sıfırlama: {next_reset}\n"
+    text += f"👑 Ranklar: 500=Çılgın | 1000=Efsanevi | 2000=GOAT\n\n"
     for i, (username, first_name, xp, level, msg_count) in enumerate(rows, 1):
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
         name = f"@{username}" if username else first_name
-        text += f"{medal} {name} — Lv.{level} | {xp} XP ({msg_count} mesaj)\n"
+        rank_title, _ = get_rank_title(xp)
+        rank_icon = "👑" if rank_title else ""
+        rank_str = f" | {rank_title}" if rank_title else ""
+        text += f"{medal} {name} — Lv.{level} | {xp} XP{rank_str} {rank_icon} ({msg_count} mesaj)\n"
 
     target = msg if msg else update.effective_message
     if target:
@@ -388,6 +461,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 1-2 kelime → 2 XP\n"
         "• 3-5 kelime → 5 XP\n"
         "• 6+ kelime → 10 XP\n\n"
+        "**Ranklar:**\n"
+        "• 500 XP → 👑 Çılgın Sohbetçi\n"
+        "• 1000 XP → 🔥 Efsanevi Sohbetçi\n"
+        "• 2000 XP → 🐐 GOAT Sohbetçi (Telegram unvanı verilir)\n\n"
         "**Anti-Spam:**\n"
         "• 1 saniyeden hızlı atarsan sadece 1 XP\n"
         "• 5 saniyede 10 mesaj atarsan 1 dakika susturulursun + XP yok\n\n"
@@ -522,9 +599,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         xp_gain, wc = calculate_xp_by_words(text_raw)
         reason = f"{wc} kelime"
 
-    new_xp, new_level, leveled_up, old_level = add_xp(user_id, username, first_name, xp_gain)
+    new_xp, new_level, leveled_up, old_level, old_xp = add_xp(user_id, username, first_name, xp_gain)
 
     logger.info(f"+{xp_gain} XP ({reason}) -> {first_name} (@{username}) [{user_id}] | Toplam: {new_xp} | Lv: {new_level}")
+
+    # --- Rank kontrolü ---
+    old_rank, _ = get_rank_title(old_xp)
+    new_rank, new_threshold = get_rank_title(new_xp)
+    if old_rank != new_rank and new_rank is not None:
+        # Rank atladı!
+        try:
+            # Telegram'da özel unvan vermeyi dene (bot admin ve promote yetkisi varsa)
+            chat = update.effective_chat
+            gave_title = False
+            if chat and chat.type in ["group", "supergroup"]:
+                gave_title = await try_give_rank_title(context, chat.id, user_id, new_rank)
+            if gave_title:
+                await msg.reply_text(
+                    f"🏆 **RANK ATLADIN!** 🏆\n\n"
+                    f"🎉 Tebrikler {first_name}!\n"
+                    f"⭐ {new_xp} XP ile **{new_rank}** oldun!\n"
+                    f"👑 Telegram unvanın verildi: `{new_rank}`",
+                    parse_mode="Markdown"
+                )
+            else:
+                # Yetki yoksa sadece duyuru
+                await msg.reply_text(
+                    f"🏆 **RANK ATLADIN!** 🏆\n\n"
+                    f"🎉 Tebrikler {first_name}!\n"
+                    f"⭐ {new_xp} XP ile **{new_rank}** oldun!\n"
+                    f"💡 (Botu yönetici yapıp 'Kullanıcıları terfi ettirme' yetkisi verirsen unvan otomatik takılır)",
+                    parse_mode="Markdown"
+                )
+        except Exception as e:
+            logger.error(f"Rank mesajı hatası: {e}")
 
     if leveled_up:
         try:
