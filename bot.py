@@ -20,17 +20,21 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN bulunamadı! .env dosyası oluştur ve içine BOT_TOKEN=... yaz")
 
-DB_PATH = "xp.db"
+DB_PATH = os.getenv("DB_PATH", "xp.db")
 
 # --- Haftalık Reset Ayarları ---
 WEEKLY_RESET_ENABLED = True
 WEEKLY_RESET_TZ = "Europe/Istanbul"
-# 6 = Pazar 00:00 = Cumartesi gecesi 00:00  (cumartesi gecesi sıfırlansın isteniyor)
-# Eğer Cuma gecesi 00:00 istiyorsan 5 yap
-WEEKLY_RESET_WEEKDAY = 6  # 0=Pzt ... 6=Pazar
+WEEKLY_RESET_WEEKDAY = 6  # 0=Pzt ... 6=Pazar, 6=Pazar 00:00 = Cumartesi gecesi
 WEEKLY_RESET_HOUR = 0
 WEEKLY_RESET_MINUTE = 0
-last_weekly_reset_date = None
+last_weekly_reset_date = None  # memory, DB'de de tutulacak
+
+# Render free'de disk yoksa xp.db her restart'ta silinir!
+# Çözüm: Render'da Disk ekle (paid) veya DB_PATH'i /data/xp.db yap ve Volume ekle
+if os.getenv("RENDER") and not os.path.exists(DB_PATH) and DB_PATH == "xp.db":
+    # Render'da dosya yoksa logla
+    logger.warning(f"DB_PATH {DB_PATH} bulunamadı, yeni oluşturulacak - free planda her restart'ta silinir! Disk ekle." )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -128,6 +132,12 @@ def init_db():
             xp INTEGER
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS bot_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -155,6 +165,27 @@ def get_all_chats():
         return [r[0] for r in rows]
     except:
         return []
+
+def get_meta(key: str):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT value FROM bot_meta WHERE key=?", (key,))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else None
+    except:
+        return None
+
+def set_meta(key: str, value: str):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO bot_meta (key, value) VALUES (?, ?)", (key, value))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"set_meta hata: {e}")
 
 def get_level(xp: int) -> int:
     level = 0
@@ -291,6 +322,11 @@ async def perform_weekly_reset(app):
     conn.close()
 
     logger.warning(f"HAFTALIK SIFIRLAMA YAPILDI {week_str} - Top: {top[0] if top else 'yok'}")
+    # Kalıcı kaydet (hem memory hem DB)
+    date_str = now.strftime("%Y-%m-%d")
+    set_meta("last_weekly_reset", date_str)
+    global last_weekly_reset_date
+    last_weekly_reset_date = date_str
 
     chats = get_all_chats()
     # Rank unvanı verilmişse temizle (sadece ENABLE_TELEGRAM_TITLE True ise)
@@ -316,7 +352,11 @@ async def perform_weekly_reset(app):
 async def weekly_reset_loop(app):
     global last_weekly_reset_date
     tz = get_tz()
-    logger.info(f"Haftalik reset aktif: her Cumartesi gecesi 00:00 (Pazar 00:00) {WEEKLY_RESET_TZ}")
+    # DB'den son reset tarihini yükle (restart sonrası çift tetiklemeyi önler)
+    if last_weekly_reset_date is None:
+        last_weekly_reset_date = get_meta("last_weekly_reset")
+    logger.info(f"Haftalik reset aktif: her Cumartesi gecesi 00:00 (Pazar 00:00) {WEEKLY_RESET_TZ} - son reset: {last_weekly_reset_date}")
+    logger.info(f"DB_PATH={DB_PATH} - Render free'de disk yoksa her restart'ta XP silinir!")
     while True:
         try:
             now = datetime.now(tz)
@@ -325,9 +365,14 @@ async def weekly_reset_loop(app):
                 now.hour == WEEKLY_RESET_HOUR and 
                 now.minute == WEEKLY_RESET_MINUTE):
                 today_str = now.strftime("%Y-%m-%d")
-                if last_weekly_reset_date != today_str:
+                last_db = get_meta("last_weekly_reset")
+                # Hem memory hem DB kontrol
+                if last_weekly_reset_date != today_str and last_db != today_str:
+                    logger.warning(f"Weekly reset tetiklendi: {now} weekday={now.weekday()}")
                     await perform_weekly_reset(app)
                     last_weekly_reset_date = today_str
+                else:
+                    logger.debug(f"Weekly reset zaten yapıldı bugün: {today_str}")
             await asyncio.sleep(30)
         except Exception as e:
             logger.error(f"Weekly loop hata: {e}")

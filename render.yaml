@@ -2,7 +2,7 @@ services:
   - type: web
     name: xp-bot
     env: python
-    plan: free
+    plan: free # 7/24 + kalici XP icin Starter (7$) ve disk gerekli
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
@@ -10,7 +10,15 @@ services:
         sync: false
       - key: PORT
         value: 10000
+      - key: DB_PATH
+        value: xp.db # Starter + disk kullaniyorsan /data/xp.db yap
     healthCheckPath: /
+    # Kalici XP icin (free'de XP her restart'ta silinir!):
+    # Starter plana gecince alt satirlari ac:
+    # disk:
+    #   name: xp-data
+    #   mountPath: /data
+    #   sizeGB: 1
   - type: web
     name: welcome-bot
     env: python
