@@ -1,0 +1,9 @@
+services:
+  xpbot:
+    build: .
+    container_name: xpbot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./xp.db:/app/xp.db
