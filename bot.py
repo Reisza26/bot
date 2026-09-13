@@ -553,7 +553,6 @@ def main():
     app.add_handler(CommandHandler("xp", rank_command))
     app.add_handler(CommandHandler("leaderboard", leaderboard_command))
     app.add_handler(CommandHandler("top", leaderboard_command))
-    app.add_handler(CommandHandler("sıra", leaderboard_command))
     app.add_handler(CommandHandler("sira", leaderboard_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("sifirlama", next_reset_command))
