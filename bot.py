@@ -23,12 +23,12 @@ if not BOT_TOKEN:
 DB_PATH = os.getenv("DB_PATH", "xp.db")
 
 # --- Haftalık Reset Ayarları ---
-WEEKLY_RESET_ENABLED = True
+WEEKLY_RESET_ENABLED = False  # asla sıfırlanmasın diye kapatıldı
 WEEKLY_RESET_TZ = "Europe/Istanbul"
-WEEKLY_RESET_WEEKDAY = 6  # 0=Pzt ... 6=Pazar, 6=Pazar 00:00 = Cumartesi gecesi
+WEEKLY_RESET_WEEKDAY = 6
 WEEKLY_RESET_HOUR = 0
 WEEKLY_RESET_MINUTE = 0
-last_weekly_reset_date = None  # memory, DB'de de tutulacak
+last_weekly_reset_date = None
 
 # Render free'de disk yoksa xp.db her restart'ta silinir!
 # Çözüm: Render'da Disk ekle (paid) veya DB_PATH'i /data/xp.db yap ve Volume ekle
