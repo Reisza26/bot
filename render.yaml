@@ -11,3 +11,15 @@ services:
       - key: PORT
         value: 10000
     healthCheckPath: /
+  - type: web
+    name: welcome-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python welcome_bot.py
+    envVars:
+      - key: WELCOME_BOT_TOKEN
+        sync: false
+      - key: PORT
+        value: 10000
+    healthCheckPath: /

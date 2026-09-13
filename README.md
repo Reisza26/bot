@@ -1,6 +1,6 @@
-# Telegram XP Bot
+# Telegram XP + Welcome Bot
 
-Her mesaj için kelime sayısına göre XP, anti-spam ve haftalık sıfırlama.
+Her mesaj için kelime sayısına göre XP, anti-spam, haftalık sıfırlama ve hoş geldin botu.
 
 ## Özellikler
 - 1-2 kelime → 2 XP, 3-5 kelime → 5 XP, 6+ kelime → 10 XP
@@ -13,8 +13,9 @@ Her mesaj için kelime sayısına göre XP, anti-spam ve haftalık sıfırlama.
 ## Kurulum
 ```bash
 pip install -r requirements.txt
-cp .env.example .env  # BOT_TOKEN ekle
-python bot.py
+cp .env.example .env  # BOT_TOKEN ve WELCOME_BOT_TOKEN ekle
+python bot.py          # XP Bot
+python welcome_bot.py  # Hos Geldin Bot (ayrı token)
 ```
 
 ## Deploy
